@@ -35,10 +35,6 @@ def make_plan(req):
   # time statistics
   start_time = rospy.Time.now()
 
-  # calculate the shortes path
-  #path, previous_plan_variables = lpastar(start_index, goal_index, width, height, costmap, resolution, origin, viz, previous_plan_variables)
-  #path, previous_plan_variables = astar(start_index, goal_index, width, height, costmap, resolution, origin, viz, previous_plan_variables)
- 
   #convert 1d index to 2d index
   s_pos = (s_ind % map_h, int(s_ind / map_w))
   g_pos = (g_ind % map_h, int(g_ind / map_w))
