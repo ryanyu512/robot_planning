@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 import rospy
-from std_msgs.msg import Header
+
 from sensor_msgs import point_cloud2
 from sensor_msgs.msg import PointCloud2, PointField
-
+from std_msgs.msg import Header
 
 class GridViz:
     def __init__(self, flat_map, resolution, origin, start_idx, goal_idx, width, id=0, frame="map"):
