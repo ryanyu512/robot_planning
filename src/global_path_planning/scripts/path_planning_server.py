@@ -1,13 +1,11 @@
-#!/usr/bin/env python
-
 import rospy
 import numpy as np
 
 from pp_msgs.srv import PathPlanningPlugin, PathPlanningPluginResponse
 from geometry_msgs.msg import Twist
 from gridviz import GridViz
-from algorithms.lpastar import lpastar
 from algorithms.a_star import *
+
 previous_plan_variables = None
 
 def make_plan(req):
@@ -19,29 +17,36 @@ def make_plan(req):
 
   # costmap as 1-D array representation
   costmap = req.costmap_ros
+  
   # number of columns in the occupancy grid
-  width = req.width
+  map_w = req.width
+  
   # number of rows in the occupancy grid
-  height = req.height
-  start_index = req.start
-  goal_index = req.goal
+  map_h = req.height
+  
+  # get start and goal index
+  s_ind  = req.start
+  g_ind  = req.goal
+  
   # side of each grid map square in meters
   resolution = 0.05
+  
   # origin of grid map
   origin = [-10, -10, 0]
 
-  viz = GridViz(costmap, resolution, origin, start_index, goal_index, width)
+  viz = GridViz(costmap, resolution, origin, s_ind, g_ind, map_w)
 
   # time statistics
   start_time = rospy.Time.now()
 
-  # calculate the shortes path
-  astar = Astar(costmap, height, width)
-  s_pos = (start_index % height, int(start_index / width))
-  g_pos = (goal_index % height, int(goal_index / width))
+  #convert 1d index to 2d index
+  s_pos = (s_ind % map_h, int(s_ind / map_w))
+  g_pos = (g_ind % map_h, int(g_ind / map_w))
+  
+ # calculate the shortest path
+  astar = Astar(costmap, map_h, map_w)
   path  = astar.search_path(s_pos, g_pos)
 
-  	
   if not path:
     rospy.logwarn("No path returned by the path algorithm")
     path = []

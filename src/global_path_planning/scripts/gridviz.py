@@ -1,17 +1,9 @@
 #!/usr/bin/env python
-
-"""
-Rviz PointCloud2 visualization marker for path planners in a grid map
-Author: Roberto Zegers R.
-Copyright: Copyright (c) 2021, Roberto Zegers R.
-License: BSD-3-Clause
-Date: March 2021
-"""
-
 import rospy
+from std_msgs.msg import Header
 from sensor_msgs import point_cloud2
 from sensor_msgs.msg import PointCloud2, PointField
-from std_msgs.msg import Header
+
 
 class GridViz:
     def __init__(self, flat_map, resolution, origin, start_idx, goal_idx, width, id=0, frame="map"):
@@ -22,8 +14,13 @@ class GridViz:
         self.start = start_idx
         self.goal = goal_idx
         self.id = id
-        self.rgba_colors = {'green' : 4278255360, 'red' : 4294901760, 'blue' : 4278190335,
-                            'pale yellow' : 4293918464, 'lime_green' : 4284802916, 'orange' : 4294944000}
+        self.rgba_colors = {'green' : 4278255360, 
+                            'red' : 4294901760, 
+                            'blue' : 4278190335,
+                            'pale yellow' : 4293918464, 
+                            'lime_green' : 4284802916, 
+                            'orange' : 4294944000}
+        
         self.plot_cloud = rospy.Publisher('/grid_viz', PointCloud2, queue_size=100)
         self.header = Header()
         self.header.frame_id = frame
