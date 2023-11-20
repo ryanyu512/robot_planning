@@ -36,17 +36,10 @@ class Astar():
 
         self.in_queue_check = {}
         
-        #initialise static map
-        #print(type(static_map))
-        #print(len(static_map))
-        #static_map_cpy = np.array(static_map, copy = True)
-        #static_map_cpy = np.reshape(static_map_cpy, (map_h, map_w))
-        
+        #initialise static map        
         static_map_cpy = np.array(static_map, copy = True)
         static_map_cpy = np.reshape(static_map_cpy, (map_h, map_w))
         self.static_map = static_map_cpy
-        
-        #self.static_map = static_map
 
         #initialise cost map
         self.t_map = {}
@@ -80,22 +73,23 @@ class Astar():
         '''
         
         neighbors = []
+        ostacle_th = 150
 
-        #handle up. down, right, left step
         for dx, dy in move:
             
             #convert back to tuple to ensure it is hashable
             n_pos = tuple(c_node.pos + np.array([dx, dy]))
 
-            if 0 <= n_pos[0] < self.map_w and 0 <= n_pos[1] < self.map_h:
-                n = Node(n_pos)
-                
-                #compute cost
-                next_move_cost = step_cost + self.static_map[n_pos[1], n_pos[0]]/255
-                n.g_cost  = c_node.g_cost + next_move_cost
-                n.compute_h(g_pos)
+            if 0 <= n_pos[0] < self.map_w and 0 <= n_pos[1] < self.map_h: 
+                if self.static_map[n_pos[1], n_pos[0]] < ostacle_th:
+                    n = Node(n_pos)
                     
-                neighbors.append(n)
+                    #compute cost
+                    next_move_cost = step_cost + self.static_map[n_pos[1], n_pos[0]]/255
+                    n.g_cost  = c_node.g_cost + next_move_cost
+                    n.compute_h(g_pos)
+                        
+                    neighbors.append(n)
                 
         return neighbors
     

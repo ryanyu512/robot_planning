@@ -5,13 +5,17 @@ from pp_msgs.srv import PathPlanningPlugin, PathPlanningPluginResponse
 from geometry_msgs.msg import Twist
 from gridviz import GridViz
 from algorithms.a_star import *
+from algorithms.d_star_lite import *
 
+hist = None
 def make_plan(req):
   ''' 
   Callback function used by the service server to process
   requests from clients. It returns a msg of type PathPlanningPluginResponse
   ''' 
 
+  global hist
+  
   # costmap as 1-D array representation
   costmap = req.costmap_ros
 
@@ -40,9 +44,15 @@ def make_plan(req):
   g_pos = (g_ind % map_h, int(g_ind / map_w))
   
  # calculate the shortest path
-  astar = Astar(costmap, map_h, map_w)
-  path  = astar.search_path(s_pos, g_pos)
-
+  #astar = Astar(costmap, map_h, map_w)
+  #path  = astar.search_path(s_pos, g_pos)
+  d_star = d_star_lite()
+  path, hist = d_star.search_path(s_pos = s_pos, 
+                              g_pos = g_pos, 
+                              map_h = map_h, 
+                              map_w = map_w, 
+                              c_static_map = costmap, 
+                              hist = hist)
   if not path:
     rospy.logwarn("No path returned by the path algorithm")
     path = []
