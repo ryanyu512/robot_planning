@@ -179,7 +179,7 @@ class d_star_lite():
             self.o_list[0].key < self.compute_key(self.s_pos)  
                 => more efficient path is found
         '''
-        while self.o_list[0].key < self.compute_key(self.s_pos) or self.rhs_map[self.s_pos] != self.g_map[self.s_pos]:
+        while (len(self.o_list) > 0 and self.o_list[0].key < self.compute_key(self.s_pos)) or self.rhs_map[self.s_pos] != self.g_map[self.s_pos]:
             
             c_node  = self.o_list.pop(0)
             c_pos   = c_node.pos
@@ -202,7 +202,7 @@ class d_star_lite():
                         => no pop
                 '''
                 c_node.key = new_key
-                self.o_list.push(c_node)
+                self.o_list.append(c_node)
             elif self.g_map[c_pos] > self.rhs_map[c_pos]:
                 '''
                     self.g_map[c_pos] > self.rhs_map[c_pos]
@@ -256,6 +256,7 @@ class d_star_lite():
         move2 = [(1, 1), (-1, 1), (1, -1), (-1, -1)]
         move = move1 + move2
         
+        path_found = True
         while c_pos[0] != self.g_pos[0] or c_pos[1] != self.g_pos[1]:
             self.path.append(self.convert_to_1d_index(c_pos))
             min_cost = np.inf
@@ -268,51 +269,29 @@ class d_star_lite():
                         min_cost = self.rhs_map[new_pos]
                 
             c_pos = next_pos
-        
-        self.path.append(self.convert_to_1d_index(self.g_pos))
-                    
-    def save_hist(self):
-        
-        return {
-        'o_list': self.o_list,
-        'g_map': self.g_map,
-        'rhs_map': self.rhs_map,
-        'static_map': self.c_static_map,
-        'path': self.path,
-        's_pos': self.s_pos
-        }
+            if c_pos is None:
+                path_found = False
+                break
+
+        if path_found:
+            self.path.append(self.convert_to_1d_index(self.g_pos))
+        else:
+            self.path = []
     
-    def search_path(self, s_pos, g_pos, map_w, map_h, c_static_map, hist = None):
+    def search_path(self, s_pos, g_pos, map_w, map_h, c_static_map, hist = None, is_load_hist = False):
         
         if len(np.array(c_static_map).shape) == 1:
+            rospy.loginfo("input map is 1d")
             #reshape 1d map to 2d map
             c_static_map_cpy = np.array(c_static_map, copy = True)
             c_static_map_cpy = np.reshape(c_static_map_cpy, (map_h, map_w))
         
-        if hist is None: 
+        if not is_load_hist: 
             self.reset(s_pos, g_pos, c_static_map_cpy, map_w, map_h)
-        else:    
-            self.c_static_map = c_static_map_cpy
-            
-            self.o_list  = hist['o_list']
-            self.g_map   = hist['g_map']
-            self.rhs_map = hist['rhs_map']
-            self.p_static_map = hist['static_map']
-            path = hist['path']
-
-            self.s_pos = hist['s_pos']
-            self.g_pos = g_pos
-            
-            for i, c_ind in enumerate(path):
-                c_pos = (c_ind % map_w, int(c_ind / map_w))
-                if self.c_static_map[c_pos[1], c_pos[0]] != self.p_static_map:
-                    self.update_queue(c_pos)
                     
         self.update_cost_map()
         
         self.get_shortest_path()
         
-        hist = self.save_hist()
-        
-        return self.path, hist
+        return self.path, None
 

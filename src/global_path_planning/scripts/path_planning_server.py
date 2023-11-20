@@ -17,7 +17,7 @@ def make_plan(req):
   global hist
   
   # costmap as 1-D array representation
-  costmap = req.costmap_ros
+  static_map = req.costmap_ros
 
   # number of columns in the occupancy grid
   map_w = req.width
@@ -34,35 +34,40 @@ def make_plan(req):
   # origin of grid map
   origin = [-10, -10, 0]
 
-  viz = GridViz(costmap, resolution, origin, s_ind, g_ind, map_w)
+  viz = GridViz(static_map, resolution, origin, s_ind, g_ind, map_w)
 
   # time statistics
-  start_time = rospy.Time.now()
+
 
   #convert 1d index to 2d index
   s_pos = (s_ind % map_h, int(s_ind / map_w))
   g_pos = (g_ind % map_h, int(g_ind / map_w))
   
  # calculate the shortest path
-  #astar = Astar(costmap, map_h, map_w)
-  #path  = astar.search_path(s_pos, g_pos)
+  rospy.loginfo('++++++++ [A star] Path Planning execution metrics ++++++++')
+  start_time = rospy.Time.now()
+  astar = Astar(static_map, map_h, map_w)
+  path  = astar.search_path(s_pos, g_pos)
+  execution_time = rospy.Time.now() - start_time
+  rospy.loginfo('[A star] Total execution time: %s seconds', str(execution_time.to_sec()))
+
+  rospy.loginfo('++++++++ [D star lite] Path Planning execution metrics ++++++++')
+  start_time = rospy.Time.now()
   d_star = d_star_lite()
   path, hist = d_star.search_path(s_pos = s_pos, 
                               g_pos = g_pos, 
                               map_h = map_h, 
                               map_w = map_w, 
-                              c_static_map = costmap, 
+                              c_static_map = static_map, 
                               hist = hist)
+  execution_time = rospy.Time.now() - start_time
+  rospy.loginfo('[D star lite] Total execution time: %s seconds', str(execution_time.to_sec()))
+
+
   if not path:
     rospy.logwarn("No path returned by the path algorithm")
     path = []
   else:
-    execution_time = rospy.Time.now() - start_time
-    print("\n")
-    rospy.loginfo('++++++++ Path Planning execution metrics ++++++++')
-    rospy.loginfo('Total execution time: %s seconds', str(execution_time.to_sec()))
-    rospy.loginfo('++++++++++++++++++++++++++++++++++++++++++++')
-    print("\n")
     rospy.loginfo('Path sent to navigation stack')
 
   resp = PathPlanningPluginResponse()
