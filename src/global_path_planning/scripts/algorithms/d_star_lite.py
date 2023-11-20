@@ -278,20 +278,73 @@ class d_star_lite():
         else:
             self.path = []
     
-    def search_path(self, s_pos, g_pos, map_w, map_h, c_static_map, hist = None, is_load_hist = False):
+    def save_hist(self):
+
+        self.hist = {
+        'o_list': self.o_list,
+        'g_map': self.g_map,
+        'rhs_map': self.rhs_map,
+        'static_map': self.c_static_map,
+        'path': self.path,
+        'g_pos': self.g_pos,
+        's_pos': self.s_pos
+        }
+
+    def search_path(self, s_pos, g_pos, map_w, map_h, c_static_map, hist = None):
         
+        is_replan = False
+        if hist is not None:
+            p_g_pos = hist['g_pos']
+            p_s_pos = hist['s_pos']
+            '''
+                => the robot will stop at some point and request for a new plan
+                => same goal point but different start point
+            '''
+            if p_g_pos[0] == g_pos[0] and p_g_pos[1] == g_pos[1]:
+                is_replan = True
+                rospy.loginfo('replan based on history data')
+
         if len(np.array(c_static_map).shape) == 1:
-            rospy.loginfo("input map is 1d")
             #reshape 1d map to 2d map
             c_static_map_cpy = np.array(c_static_map, copy = True)
             c_static_map_cpy = np.reshape(c_static_map_cpy, (map_h, map_w))
         
-        if not is_load_hist: 
+        if not is_replan: 
             self.reset(s_pos, g_pos, c_static_map_cpy, map_w, map_h)
-                    
+        else:
+            #get back history data
+            self.o_list = hist['o_list']
+            self.g_map  = hist['g_map']
+            self.rhs_map = hist['rhs_map']
+            self.p_static_map = hist['static_map']
+            self.c_static_map = c_static_map_cpy
+
+            p_path = hist['path']
+
+            p_s_pos = hist['s_pos']
+            p_g_pos = hist['g_pos']
+
+            self.s_pos = s_pos
+            self.g_pos = g_pos
+
+            self.map_w = map_w
+            self.map_h = map_h
+
+            '''
+                check if there is any map change along the path
+                    => if yes, update the queue
+            '''
+            for i, ind in enumerate(p_path):
+                c_pos = (int(ind % map_w), int(ind / map_w))
+                if self.c_static_map[c_pos[1], c_pos[0]] != self.p_static_map[c_pos[1], c_pos[0]]:
+                    c_node = Node(c_pos)
+                    self.update_queue(c_node)
+
         self.update_cost_map()
         
         self.get_shortest_path()
         
-        return self.path, None
+        self.save_hist()
+
+        return self.path, self.hist
 

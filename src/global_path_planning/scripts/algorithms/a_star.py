@@ -204,9 +204,9 @@ class Astar():
 
         if not is_path_found:
             best_path = []
-            rospy.loginfo("path not found")
+            #rospy.loginfo("path not found")
         else:
             best_path = self.backtrack()    
-            rospy.loginfo("path found")
+            #rospy.loginfo("path found")
         
         return best_path
