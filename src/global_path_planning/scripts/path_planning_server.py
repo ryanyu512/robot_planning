@@ -3,7 +3,6 @@
 import rospy
 from pp_msgs.srv import PathPlanningPlugin, PathPlanningPluginResponse
 from geometry_msgs.msg import Twist
-from gridviz import GridViz
 from algorithms.a_star import *
 from algorithms.d_star_lite import *
 
@@ -34,23 +33,19 @@ def make_plan(req):
   # origin of grid map
   origin = [-10, -10, 0]
 
-  viz = GridViz(static_map, resolution, origin, s_ind, g_ind, map_w)
-
-  # time statistics
-
-
   #convert 1d index to 2d index
   s_pos = (s_ind % map_h, int(s_ind / map_w))
   g_pos = (g_ind % map_h, int(g_ind / map_w))
   
  # calculate the shortest path
+  '''
   rospy.loginfo('++++++++ [A star] Path Planning execution metrics ++++++++')
   start_time = rospy.Time.now()
   astar = Astar(static_map, map_h, map_w)
   path  = astar.search_path(s_pos, g_pos)
   execution_time = rospy.Time.now() - start_time
   rospy.loginfo('[A star] Total execution time: %s seconds', str(execution_time.to_sec()))
-
+  '''
   rospy.loginfo('++++++++ [D star lite] Path Planning execution metrics ++++++++')
   start_time = rospy.Time.now()
   d_star = d_star_lite()
