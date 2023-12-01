@@ -12,7 +12,7 @@ from nav_msgs.msg import Odometry
 
 import tf
 
-STRAIGHT = 0
+GO2GOAL = 0
 LEFT  = 1
 RIGHT = 2
 ROTATE = 3
@@ -68,10 +68,10 @@ class ScanData():
     def update(self, data):
         self.lock.acquire()
         self.data = data
-        self.f_dist = np.min([self.get_min(0, 20), self.get_min(340, 359)])
-        self.r_dist = self.get_min(300, 329)
-        self.l_dist = self.get_min(30, 69)
-        #print(data.angle_increment)
+        self.f_dist = np.min([self.get_min(0, 10), self.get_min(350, 359)])
+        self.r_dist = self.get_min(290, 339)
+        self.l_dist = self.get_min(20, 59)
+
         self.lock.release()
 
     def get(self):
@@ -101,7 +101,8 @@ class ScanData():
         self.lock.release()
         
         return dist
-        
+
+#initialise pose and scan class
 cur_pose = Pose()
 cur_scan = ScanData()
 
@@ -136,82 +137,69 @@ class Bug():
     def __init__(self, 
                  goal, 
                  goal_threshold = 0.10, 
-                 hit_wall_threshold = 0.5, 
-                 fol_wall_threshold = 0.4,
-                 face_target_delta = 20./180*np.math.pi,
+                 avoidance_threshold = 0.65, 
+                 fol_wall_threshold  = 0.55,
+                 face_target_delta = 30./180*np.math.pi,
                  max_lin_spd_x_go2goal = 0.15,
                  max_lin_spd_x_folwall = 0.05,
                  max_ang_spd_z = 1.0, 
                  ang_K = 2,
                  lin_K = 0.1):
         
+        #initialise cmd publisher
         self.cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=1)
+        #intialise goal
         self.goal  = goal
+        #define the threshold for successfully reaching goal
         self.goal_threshold = goal_threshold
-        self.hit_wall_threshold = hit_wall_threshold 
+        #define obstacle avoidance threshold
+        self.avoidance_threshold = avoidance_threshold 
+        #define the distance between robot and wall during following wall
         self.fol_wall_threshold = fol_wall_threshold
+        #define the angle threshold to trigger go to goal action
         self.face_target_delta = face_target_delta
+        #define max linear speed during go to goal motion
         self.lin_spd_x_go2goal = max_lin_spd_x_go2goal
+        #define max linear speed during following the wall
         self.lin_spd_x_folwall = max_lin_spd_x_folwall
+        #define max angular speed
         self.max_ang_spd_z = max_ang_spd_z
+        #define proportional gain for angular motion
         self.ang_K = ang_K
+        #define proportional gain for linear motion
         self.lin_K = lin_K
+        #define using left or right sensor during following wall
         self.focus_sensor = None
+        #define if the goal is reachable
+        self.is_reachable = True
 
-    def move(self, action):
-        
-        cmd_vel = Twist()
-        if action == STRAIGHT:
-            cmd_vel.linear.x  =  self.lin_spd_x_go2goal
+    def go2goal(self):
+        (f_dist, r_dist, l_dist) = cur_scan.get()
+    
+        angular_z = linear_x = 0
 
-            (f_dist, r_dist, l_dist) = cur_scan.get()
-            
-            #dis_e => -ve => too closed to the wall => turn right
-            #dis_e => +ve => too far from the wall  => turn left
+        #dis_e => -ve => too closed to the wall 
+        #dis_e => +ve => too far away from the wall  
+
+        if l_dist < r_dist:
+            dis_e =  l_dist - self.avoidance_threshold
+        else:
+            dis_e =  r_dist - self.avoidance_threshold
+
+        if dis_e < 0:
             if l_dist < r_dist:
-                dis_e =   l_dist - self.hit_wall_threshold
+                dis_e_sign = math.copysign(1,  dis_e)
             else:
-                dis_e =  r_dist - self.hit_wall_threshold
+                dis_e_sign = math.copysign(1, -dis_e)
 
-            if dis_e < 0:
-                if l_dist < r_dist:
-                    dis_e_sign = math.copysign(1, dis_e)
-                else:
-                    dis_e_sign = math.copysign(1, -dis_e)
+            #move closer to the goal and avoid moving too closed to obstacle at the same time
+            angular_z = dis_e_sign*min(abs(dis_e*self.ang_K), self.max_ang_spd_z)
+            linear_x  = max(min(self.lin_K*abs(1/dis_e) , self.lin_spd_x_go2goal), 0.05)
+        else:
+            #move straightly to the goal
+            linear_x  =  self.lin_spd_x_go2goal   
 
-                cmd_vel.angular.z = dis_e_sign*min(abs(dis_e*self.ang_K), self.max_ang_spd_z)
-                cmd_vel.linear.x  = 0.05
-
-
-        elif action == LEFT:
-            cmd_vel.angular.z =  self.max_ang_spd_z
-        elif action == RIGHT:
-            cmd_vel.angular.z = -self.max_ang_spd_z
-        elif action == ROTATE:
-            
-            (cx, cy, cyaw) = cur_pose.get_pose()
-            desired_heading = self.compute_desired_heading(cx, cy)
-            dh_sign = math.copysign(1, desired_heading)
-            cy_sign = math.copysign(1, cyaw)
-
-            if dh_sign != cy_sign:
-                if cy_sign == -1:
-                    desired_heading -= 2*np.math.pi
-                else:
-                    desired_heading += 2*np.math.pi
-
-            ang_e = desired_heading - cyaw
-
-            if abs(ang_e) > np.math.pi:
-                if cy_sign == 1:
-                    ang_e -= 2*np.pi
-                else:
-                    ang_e += 2*np.pi
-
-            sign = 1 if ang_e >= 0 else -1
-            cmd_vel.angular.z = sign*min(abs(ang_e)*self.ang_K, self.max_ang_spd_z)       
-
-        self.cmd_pub.publish(cmd_vel)
+        return linear_x, angular_z
 
     def follow_wall_p_control(self):
             
@@ -227,40 +215,33 @@ class Bug():
             #dis_e => -ve => too closed to the wall => turn right
             #dis_e => +ve => too far from the wall  => turn left
             dis_e = l_dist - self.fol_wall_threshold
-            dis_e_sign = math.copysign(1, dis_e)
-
-            cmd_vel.angular.z = dis_e_sign*min(abs(dis_e*self.ang_K), self.max_ang_spd_z)
-            cmd_vel.linear.x  = self.lin_K*(abs(1/dis_e) - 1./f_dist)
-            cmd_vel.linear.x  = max(min(cmd_vel.linear.x, self.lin_spd_x_folwall), 0)
-            self.cmd_pub.publish(cmd_vel)
         else:
             print('focus on right sensor')
             #dis_e => -ve => too closed to the wall => turn left
             #dis_e => +ve => too far from the wall  => turn right
             dis_e = -(r_dist - self.fol_wall_threshold)
-            dis_e_sign = math.copysign(1, dis_e)
+            
+        dis_e_sign = math.copysign(1, dis_e)
+        cmd_vel.angular.z = dis_e_sign*min(abs(dis_e*self.ang_K), self.max_ang_spd_z)
 
-            cmd_vel.angular.z = dis_e_sign*min(abs(dis_e*self.ang_K), self.max_ang_spd_z)
-            cmd_vel.linear.x  = self.lin_K*(abs(1/dis_e) - 1./f_dist)
-            cmd_vel.linear.x  = max(min(cmd_vel.linear.x, self.lin_spd_x_folwall), 0)
-            self.cmd_pub.publish(cmd_vel)
+        cmd_vel.linear.x  = self.lin_K*(abs(1/dis_e) - 1./f_dist)
+        cmd_vel.linear.x  = max(min(cmd_vel.linear.x, self.lin_spd_x_folwall), 0)
+        self.cmd_pub.publish(cmd_vel)
 
-    def choose_actions(self):
-
+    def compute_heading_err(self):
         (cx, cy, cyaw) = cur_pose.get_pose()
-
-        if None in (cx, cy, cyaw):
-            return NO_ACTION
-        
-        desired_heading = t = self.compute_desired_heading(cx, cy)
+        desired_heading = self.compute_desired_heading(cx, cy)
         dh_sign = math.copysign(1, desired_heading)
         cy_sign = math.copysign(1, cyaw)
+
+        #make sure the sign of desired heading and current yaw angle are the same
         if dh_sign != cy_sign:
             if cy_sign == -1:
                 desired_heading -= 2*np.math.pi
             else:
                 desired_heading += 2*np.math.pi
 
+        #compute angle error
         ang_e = desired_heading - cyaw
 
         if abs(ang_e) > np.math.pi:
@@ -269,10 +250,37 @@ class Bug():
             else:
                 ang_e += 2*np.pi
 
-        f_dist, r_dist, l_dist = cur_scan.get()
+        return ang_e
+
+    def move(self, action):
+        
+        cmd_vel = Twist()
+        if action == GO2GOAL:
+            cmd_vel.linear.x, cmd_vel.angular.z = self.go2goal()
+        elif action == LEFT:
+            cmd_vel.angular.z =  self.max_ang_spd_z
+        elif action == RIGHT:
+            cmd_vel.angular.z = -self.max_ang_spd_z
+        elif action == ROTATE:
+            
+            ang_e = self.compute_heading_err()
+            sign = 1 if ang_e >= 0 else -1
+            cmd_vel.angular.z = sign*min(abs(ang_e)*self.ang_K, self.max_ang_spd_z)       
+
+        self.cmd_pub.publish(cmd_vel)
+
+    def choose_actions(self):
+
+        (cx, cy, cyaw) = cur_pose.get_pose()
+
+        if None in (cx, cy, cyaw):
+            return NO_ACTION
+        
+        ang_e = self.compute_heading_err()
+
         if abs(ang_e) <= self.face_target_delta:
-            print("move to goal - straight")
-            return STRAIGHT
+            print("move to goal - go to goal")
+            return GO2GOAL
         else:
             print("move to goal - rotate")
             return ROTATE
@@ -290,8 +298,8 @@ class Bug():
 
             (f_dist, r_dist, l_dist) = cur_scan.get()
 
-            if f_dist < self.hit_wall_threshold and action == STRAIGHT:
-                print("=== meet wall ===")
+            if f_dist < self.avoidance_threshold and action == GO2GOAL:
+                print("=== meet obstacle ===")
                 return True
 
             self.move(action)
@@ -299,43 +307,65 @@ class Bug():
 
         return False
 
-    def is_leave_wall(self):
-
+    def get_goal_scan_ind(self):
+        #get current pose and scan data
         (cx, cy, cyaw) = cur_pose.get_pose()
+
+
+        #compute desired heading relative to global frame
         desired_heading = self.compute_desired_heading(cx, cy)
-        #make the desired_heading relative to the robot heading/laser heading
+
+        #compute the desired_heading relative to the robot heading/laser heading
         rel_ang = desired_heading - cyaw 
+
+        #convert to positive angle for calculating index
         if rel_ang < 0:
-            
             rel_ang += 2*np.math.pi
         
-        scan_dist = cur_scan.at(int(rel_ang/cur_scan.data.angle_increment))
+        #compute the scan index towards the goal
+        scan_ind  = int(rel_ang/cur_scan.data.angle_increment)
+
+        return scan_ind
+
+    def is_leave_wall(self):
+
+        scan_ind = self.get_goal_scan_ind()
+
+        #compute the scan distance towards the goal
+        scan_dist = cur_scan.at(scan_ind)
 
         f_dist, r_dist, l_dist  = cur_scan.get()
-
-        if scan_dist > self.hit_wall_threshold*1:
-            print("=== leave wall ===")
-            self.focus_sensor = None
-            return True
+        #check leave wall condition
+        if scan_dist > self.avoidance_threshold*1.5:
+            
+            if (self.focus_sensor == 'R' and r_dist > self.avoidance_threshold) or \
+               (self.focus_sensor == 'L' and l_dist > self.avoidance_threshold):
+                self.focus_sensor = None
+                print("=== leave wall ===")
+                return True
         
         return False
 
     def follow_wall(self):
         print("=== follow_wall ===")
+
+        #get current pose and scan data
         (cx, cy, cyaw) = cur_pose.get_pose()
         (f_dist, r_dist, l_dist) = cur_scan.get()
+
+        #compute current desired heading
         desired_heading = self.compute_desired_heading(cx, cy)
 
-        while cur_scan.get()[0] <= self.hit_wall_threshold:
-            print(f"=== follow_wall: rotate ===: front scan: {cur_scan.get()[0]}, threshold:{self.hit_wall_threshold}")
-
+        while cur_scan.get()[0] <= self.avoidance_threshold:
+            print(f"=== follow_wall: rotate ===: front scan: {cur_scan.get()[0]}, threshold:{self.avoidance_threshold}")
+            #rotate to the direction towards the goal
             if desired_heading - cyaw  < 0:
                 self.move(RIGHT)
             else:
                 self.move(LEFT)
             rospy.sleep(0.01)
             
-        while not self.is_leave_wall():
+        while not self.is_leave_wall() and cur_pose.compute_dist(self.goal) > self.goal_threshold:
             print("=== follow wall p control ===")
             self.follow_wall_p_control()
             rospy.sleep(0.01)
@@ -356,10 +386,10 @@ class Bug():
 
 if __name__ == '__main__':
     
-    print(sys.argv)
     if len(sys.argv) == 3:
         argv = sys.argv[1:3]
         tx, ty = map(float, [argv[0], argv[1]])
+        print(f"goal: {tx}, {ty}")
         bug = Bug([tx, ty])
 
         bug.navigate()
